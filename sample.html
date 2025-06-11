@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Schema Generator</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 text-gray-800">
+  <div class="max-w-4xl mx-auto p-6">
+    <h1 class="text-3xl font-bold mb-2 text-center">📄 Schema Generator</h1>
+    <p class="text-sm text-center text-gray-500 mb-4" id="userInfo">Authenticating...</p>
+
+    <!-- Form -->
+    <div class="bg-white p-4 rounded shadow">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <input id="fieldName" type="text" placeholder="Field Name" class="border p-2 rounded" />
+        <select id="fieldType" class="border p-2 rounded">
+          <option value="string">String</option>
+          <option value="number">Number</option>
+          <option value="boolean">Boolean</option>
+          <option value="array">Array</option>
+        </select>
+        <input id="defaultValue" type="text" placeholder="Default Value" class="border p-2 rounded" />
+        <button onclick="addField()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Add Field</button>
+      </div>
+    </div>
+
+    <!-- Schema Preview -->
+    <div class="bg-white mt-6 p-4 rounded shadow">
+      <h2 class="text-xl font-semibold mb-2">🔍 JSON Schema Preview:</h2>
+      <pre id="schemaOutput" class="bg-gray-100 p-4 rounded text-sm overflow-x-auto"></pre>
+    </div>
+
+    <!-- Validation Section -->
+    <div class="bg-white mt-6 p-4 rounded shadow">
+      <h2 class="text-xl font-semibold mb-2">🧪 Test Schema with Dummy Data:</h2>
+      <textarea id="testDataInput" rows="6" placeholder='Enter JSON data to validate here...' class="w-full border p-2 rounded font-mono text-sm"></textarea>
+      <button onclick="validateData()" class="mt-2 bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">Validate</button>
+      <pre id="validationResult" class="mt-2 p-2 rounded bg-gray-100 text-sm whitespace-pre-wrap"></pre>
+    </div>
+
+  </div>
+
+  <!-- Firebase SDK Scripts -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
+    import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "000000000000000000000000",
+      authDomain: "000000000000000000000000",
+      projectId: "000000000000000000000000a",
+      storageBucket: "l000000000000000000000000age.app",
+      messagingSenderId: "000000000000000000000000280",
+      appId: "1:00000000000000000000000086e715d9d",
+      measurementId: "G0000000000000000000000004"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth();
+    let userId = null;
+    let schema = {};
+
+    // 🔐 Anonymous Sign-in
+    signInAnonymously(auth).catch((error) => {
+      alert("Authentication failed: " + error.message);
+    });
+
+    // 👤 Track user auth state
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        userId = user.uid;
+        document.getElementById("userInfo").textContent = `User ID: ${userId}`;
+      }
+    });
+
+    window.addField = function () {
+      const name = document.getElementById('fieldName').value.trim();
+      const type = document.getElementById('fieldType').value;
+      const defaultVal = document.getElementById('defaultValue').value.trim();
+
+      if (!name) return alert("Field name is required");
+
+      let parsedDefault;
+      switch(type) {
+        case 'number':
+          parsedDefault = defaultVal === '' ? 0 : parseFloat(defaultVal);
+          break;
+        case 'boolean':
+          parsedDefault = defaultVal.toLowerCase() === 'true';
+          break;
+        case 'array':
+          parsedDefault = defaultVal ? defaultVal.split(',').map(item => item.trim()) : [];
+          break;
+        default:
+          parsedDefault = defaultVal;
+      }
+
+      schema[name] = {
+        type,
+        default: parsedDefault
+      };
+
+      document.getElementById('schemaOutput').textContent = JSON.stringify(schema, null, 2);
+    }
+
+    // Validation logic
+    function validateField(type, value) {
+      if (value === undefined || value === null) return false;
+      switch(type) {
+        case 'string': return typeof value === 'string';
+        case 'number': return typeof value === 'number' && !isNaN(value);
+        case 'boolean': return typeof value === 'boolean';
+        case 'array': return Array.isArray(value);
+        default: return false;
+      }
+    }
+
+    window.validateData = function() {
+      const input = document.getElementById('testDataInput').value.trim();
+      const output = document.getElementById('validationResult');
+      if (!input) {
+        output.textContent = "Please enter JSON data to validate.";
+        output.style.color = "red";
+        return;
+      }
+
+      let dataObj;
+      try {
+        dataObj = JSON.parse(input);
+      } catch (e) {
+        output.textContent = "Invalid JSON format.";
+        output.style.color = "red";
+        return;
+      }
+
+      if (Object.keys(schema).length === 0) {
+        output.textContent = "Schema is empty. Add fields first.";
+        output.style.color = "red";
+        return;
+      }
+
+      let errors = [];
+      for (const [field, props] of Object.entries(schema)) {
+        const val = dataObj[field];
+        if (val === undefined) {
+          errors.push(`Field "${field}" is missing.`);
+        } else if (!validateField(props.type, val)) {
+          errors.push(`Field "${field}" should be of type ${props.type}.`);
+        }
+      }
+
+      if (errors.length === 0) {
+        output.textContent = "✅ Validation passed! Data matches the schema.";
+        output.style.color = "green";
+      } else {
+        output.textContent = errors.join('\n');
+        output.style.color = "red";
+      }
+    }
+  </script>
+</body>
+</html>
